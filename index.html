@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Board Game</title>
+<style>
+  html, body {
+    height: 100%;
+  }
+  body {
+    margin: 0;
+    background: #333;
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    overflow: hidden;
+    user-select: none;
+    -webkit-user-select: none;
+    touch-action: none;
+  }
+  #board-container {
+    flex: 1;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    background: #000;
+  }
+  #board-canvas {
+    max-height: 100%;
+    max-width: 100%;
+    height: 100%;
+    image-rendering: crisp-edges;
+    image-rendering: pixelated;
+  }
+  #hub {
+    flex: 1;
+    background: #222;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 10px;
+    box-sizing: border-box;
+    color: #fff;
+  }
+  #hub-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    width: 100%;
+    margin-bottom: 10px;
+  }
+  button {
+    font-size: 1.1em;
+    padding: 8px 12px;
+    border: none;
+    border-radius: 8px;
+  }
+  #dice-result {
+    font-size: 1.5em;
+    color: white;
+    margin-left: 10px;
+    min-width: 1.5em;
+    display: inline-block;
+    text-align: center;
+  }
+  #trash {
+    width: 50px;
+    height: 50px;
+    background: url('wall_black.png') center/contain no-repeat;
+    border: 2px solid red;
+    border-radius: 6px;
+    box-sizing: border-box;
+  }
+  #spawn-container {
+    flex: 1;
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    overflow-x: auto;
+  }
+  .spawn-row {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    overflow-x: auto;
+    margin-bottom: 10px;
+  }
+  .spawn-piece {
+    width: 60px;
+    height: 60px;
+    margin: 5px;
+    object-fit: contain;
+    touch-action: manipulation;
+  }
+  .game-piece {
+    position: absolute;
+    width: 60px;
+    height: 60px;
+    object-fit: contain;
+    touch-action: none;
+    pointer-events: auto;
+  }
+</style>
+</head>
+<body>
+
+<div id="board-container">
+  <canvas id="board-canvas"></canvas>
+</div>
+
+<div id="hub">
+  <div id="hub-top">
+    <div id="trash" title="Trash"></div>
+    <div>
+      <button id="dice-btn">🎲 Dice</button>
+      <span id="dice-result">-</span>
+    </div>
+    <button id="clear-btn">Clear Board</button>
+  </div>
+  <div id="spawn-container">
+    <div class="spawn-row" id="spawn-black"></div>
+    <div class="spawn-row" id="spawn-white"></div>
+  </div>
+</div>
+
+<script>
+  // Prevent iOS zoom during interactions
+  document.addEventListener('gesturestart', e => e.preventDefault());
+  document.addEventListener('dblclick', e => e.preventDefault());
+  document.addEventListener('touchmove', e => {
+    if (e.target.closest('.game-piece') || e.target.closest('.spawn-piece')) {
+      e.preventDefault();
+    }
+  }, { passive: false });
+
+  const spawnBlack = [
+    'king_black.PNG','attacker_black.PNG','defender_black.PNG','midfielder_black.PNG','minion_black.PNG',
+    'spawner_black.png','jynx_black.PNG','specialdisc_black.png','topdisc_black.png','wall_black.png'
+  ];
+  const spawnWhite = [
+    'king_white.PNG','attacker_white.PNG','defender_white.PNG','midfielder_white.PNG','minion_white.PNG',
+    'spawner_white.PNG','jynx_white.PNG','specialdisc_white.PNG','topdisc_white.PNG','wall_white.png'
+  ];
+
+  const spawnBlackRow = document.getElementById('spawn-black');
+  const spawnWhiteRow = document.getElementById('spawn-white');
+  const trash = document.getElementById('trash');
+
+  // Load board image at 2x resolution for retina sharpness
+  const boardCanvas = document.getElementById('board-canvas');
+  const ctx = boardCanvas.getContext('2d');
+  const boardImage = new Image();
+  boardImage.src = 'board.png';
+  boardImage.onload = () => {
+    const scale = 2;
+    boardCanvas.width = boardImage.width * scale;
+    boardCanvas.height = boardImage.height * scale;
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(boardImage, 0, 0, boardCanvas.width, boardCanvas.height);
+    boardCanvas.style.width = '100%';
+    boardCanvas.style.height = '100%';
+  };
+
+  function createSpawn(imgSrc) {
+    const img = document.createElement('img');
+    img.src = imgSrc;
+    img.classList.add('spawn-piece');
+    img.addEventListener('pointerdown', e => spawnPiece(e, imgSrc));
+    return img;
+  }
+
+  spawnBlack.forEach(src => spawnBlackRow.appendChild(createSpawn(src)));
+  spawnWhite.forEach(src => spawnWhiteRow.appendChild(createSpawn(src)));
+
+  function spawnPiece(e, src) {
+    e.preventDefault();
+    const piece = document.createElement('img');
+    piece.src = src;
+    piece.classList.add('game-piece');
+    document.body.appendChild(piece);
+    startDrag(e, piece);
+    piece.setPointerCapture(e.pointerId);
+    piece.addEventListener('pointermove', ev => movePiece(ev, piece));
+    piece.addEventListener('pointerup', ev => dropPiece(ev, piece));
+  }
+
+  function startDrag(e, piece) {
+    movePiece(e, piece);
+  }
+
+  function movePiece(e, piece) {
+    const x = e.clientX - piece.width / 2;
+    const y = e.clientY - piece.height / 2;
+    piece.style.left = x + 'px';
+    piece.style.top = y + 'px';
+  }
+
+  function dropPiece(e, piece) {
+    try { piece.releasePointerCapture(e.pointerId); } catch {}
+    const trashRect = trash.getBoundingClientRect();
+    if (e.clientX >= trashRect.left && e.clientX <= trashRect.right &&
+        e.clientY >= trashRect.top && e.clientY <= trashRect.bottom) {
+      piece.remove();
+    }
+  }
+
+  document.getElementById('dice-btn').addEventListener('click', () => {
+    const roll = Math.floor(Math.random() * 6) + 1;
+    document.getElementById('dice-result').textContent = roll;
+  });
+
+  document.getElementById('clear-btn').addEventListener('click', () => {
+    document.querySelectorAll('.game-piece').forEach(p => p.remove());
+  });
+</script>
+
+</body>
+</html>
